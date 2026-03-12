@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>ArchiveCloud Dashboard</title>
+        <link rel="stylesheet" href="style.css">
+    </head>
+    <body>
+        <header>
+            <h1>ArchiveCloud</h1>
+            <p>AWS Archive & Monitoring Platform</p>
+        </header>
+        <div class="container">
+            <section class="card">
+                <h2>Upload File</h2>
+                <input type="file" id="fileInput">
+                <button onclick="uploadFile()">Upload to S3</button>
+                <p class="info">Runs: <code>./upload.sh &lt;file&gt;</code></p>
+            </section>
+            <section class="card">
+                <h2>Archive Storage</h2>
+                <button onclick="archiveFiles()">Move to Glacier</button>
+                <p class="info">Runs: <code>./archive.sh glacier-move</code></p>
+            </section>
+
+            <section class="card">
+                <h2>System Monitoring</h2>
+                <button onclick="monitorSystem()">Check System</button>
+                <p class="info">Runs: <code>./monitor.sh all</code></p>
+            </section>
+            <section class="card">
+                <h2>Live Infrastructure Status</h2>
+                <div id="status">
+                    <p>Lightsail: <span id="ls">Unknown</span></p>
+                    <p>EKS Cluster: <span id="eks">Unknown</span></p>
+                    <p>S3 Storage: <span id="s3">Unknown</span></p>
+                </div>
+                <button onclick="simulateStatus()">Refresh</button>
+            </section>
+        </div>
+        <section class="terminal">
+            <h3>Command Output</h3>
+            <pre id="output">System ready...</pre>
+        </section>
+        <footer>
+            CloudVault Human and Computer Interaction Project  
+            AWS Services: EC2 + S3 + Glue + EKS + IAM + CloudWatch + Amazon SNS + Systems Manager
+        </footer>
+        <script src="script.js"></script>
+    </body>
+</html>
