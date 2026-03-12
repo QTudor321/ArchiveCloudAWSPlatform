@@ -2,50 +2,200 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>ArchiveCloud Dashboard</title>
-        <link rel="stylesheet" href="style.css">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="styles.css">
     </head>
     <body>
+
+        <div class="scanline"></div>
+
         <header>
-            <h1>ArchiveCloud</h1>
-            <p>AWS Archive & Monitoring Platform</p>
+            <div class="header-left">
+            <div class="logo-mark">AC</div>
+            <div class="header-text">
+                <h1>ArchiveCloud</h1>
+                <p>AWS Archive &amp; Monitoring Platform</p>
+            </div>
+            </div>
+            <div class="header-right">
+            <div class="status-pill" id="systemStatus">
+                <span class="dot"></span>
+                <span>SYSTEM READY</span>
+            </div>
+            </div>
         </header>
-        <div class="container">
-            <section class="card">
-                <h2>Upload File</h2>
-                <input type="file" id="fileInput">
-                <button onclick="uploadFile()">Upload to S3</button>
-                <p class="info">Runs: <code>./upload.sh &lt;file&gt;</code></p>
-            </section>
-            <section class="card">
-                <h2>Archive Storage</h2>
-                <button onclick="archiveFiles()">Move to Glacier</button>
-                <p class="info">Runs: <code>./archive.sh glacier-move</code></p>
+
+        <main>
+
+            <!-- Service Status Bar -->
+            <section class="status-bar">
+            <div class="status-item" id="stat-iam">
+                <span class="stat-label">IAM</span>
+                <span class="stat-value" id="val-iam">—</span>
+            </div>
+            <div class="status-item" id="stat-ec2">
+                <span class="stat-label">EC2</span>
+                <span class="stat-value" id="val-ec2">—</span>
+            </div>
+            <div class="status-item" id="stat-s3">
+                <span class="stat-label">S3</span>
+                <span class="stat-value" id="val-s3">—</span>
+            </div>
+            <div class="status-item" id="stat-glacier">
+                <span class="stat-label">GLACIER</span>
+                <span class="stat-value" id="val-glacier">—</span>
+            </div>
+            <div class="status-item" id="stat-eks">
+                <span class="stat-label">EKS</span>
+                <span class="stat-value" id="val-eks">—</span>
+            </div>
+            <div class="status-item" id="stat-glue">
+                <span class="stat-label">GLUE</span>
+                <span class="stat-value" id="val-glue">—</span>
+            </div>
+            <div class="status-item" id="stat-cw">
+                <span class="stat-label">CLOUDWATCH</span>
+                <span class="stat-value" id="val-cw">—</span>
+            </div>
+            <div class="status-item" id="stat-sns">
+                <span class="stat-label">SNS</span>
+                <span class="stat-value" id="val-sns">—</span>
+            </div>
+            <div class="status-item" id="stat-ssm">
+                <span class="stat-label">SSM</span>
+                <span class="stat-value" id="val-ssm">—</span>
+            </div>
             </section>
 
-            <section class="card">
-                <h2>System Monitoring</h2>
-                <button onclick="monitorSystem()">Check System</button>
-                <p class="info">Runs: <code>./monitor.sh all</code></p>
-            </section>
-            <section class="card">
-                <h2>Live Infrastructure Status</h2>
-                <div id="status">
-                    <p>Lightsail: <span id="ls">Unknown</span></p>
-                    <p>EKS Cluster: <span id="eks">Unknown</span></p>
-                    <p>S3 Storage: <span id="s3">Unknown</span></p>
+            <!-- Action Cards -->
+            <section class="cards">
+
+            <div class="card card--upload">
+                <div class="card-header">
+                <span class="card-icon">↑</span>
+                <h2>Upload</h2>
                 </div>
-                <button onclick="simulateStatus()">Refresh</button>
+                <p class="card-desc">Upload a file to S3 with AES-256 encryption and SSM audit logging.</p>
+                <div class="file-drop" id="fileDrop" onclick="document.getElementById('fileInput').click()">
+                <span id="fileLabel">Drop file or click to select</span>
+                <input type="file" id="fileInput" onchange="onFileSelect(this)">
+                </div>
+                <button class="btn btn--primary" onclick="uploadFile()">
+                <span>Upload to S3</span>
+                </button>
+                <code class="cmd">./upload.sh &lt;file&gt;</code>
+            </div>
+
+            <div class="card card--archive">
+                <div class="card-header">
+                <span class="card-icon">❄</span>
+                <h2>Archive</h2>
+                </div>
+                <p class="card-desc">Move S3 uploads to Glacier cold storage. Lifecycle policy auto-archives after 30 days.</p>
+                <div class="archive-options">
+                <label class="radio-option">
+                    <input type="radio" name="archiveMode" value="all" checked>
+                    <span>Archive all uploads/</span>
+                </label>
+                <label class="radio-option">
+                    <input type="radio" name="archiveMode" value="single">
+                    <span>Single file key</span>
+                </label>
+                </div>
+                <input type="text" class="text-input" id="archiveKey" placeholder="uploads/filename.txt" style="display:none">
+                <button class="btn btn--accent" onclick="archiveFiles()">
+                <span>Move to Glacier</span>
+                </button>
+                <code class="cmd">./archive.sh [key]</code>
+            </div>
+
+            <div class="card card--monitor">
+                <div class="card-header">
+                <span class="card-icon">◎</span>
+                <h2>Monitor</h2>
+                </div>
+                <p class="card-desc">Query all 8 AWS services and display current infrastructure state.</p>
+                <div class="service-select">
+                <select id="monitorService">
+                    <option value="all">All services</option>
+                    <option value="iam">IAM</option>
+                    <option value="ec2">EC2</option>
+                    <option value="s3">S3</option>
+                    <option value="glacier">Glacier</option>
+                    <option value="eks">EKS</option>
+                    <option value="glue">Glue</option>
+                    <option value="cloudwatch">CloudWatch</option>
+                    <option value="sns">SNS</option>
+                    <option value="ssm">SSM</option>
+                </select>
+                </div>
+                <button class="btn btn--monitor" onclick="monitorSystem()">
+                <span>Run Monitor</span>
+                </button>
+                <code class="cmd">./monitor.sh [service]</code>
+            </div>
+
+            <div class="card card--status">
+                <div class="card-header">
+                <span class="card-icon">⬡</span>
+                <h2>Infrastructure</h2>
+                </div>
+                <p class="card-desc">Live infrastructure status across EC2, EKS, S3 and Glacier.</p>
+                <div class="infra-grid" id="infraGrid">
+                <div class="infra-row">
+                    <span class="infra-label">EC2 Instance</span>
+                    <span class="infra-val" id="inf-ec2">Unknown</span>
+                </div>
+                <div class="infra-row">
+                    <span class="infra-label">EKS Cluster</span>
+                    <span class="infra-val" id="inf-eks">Unknown</span>
+                </div>
+                <div class="infra-row">
+                    <span class="infra-label">S3 Objects</span>
+                    <span class="infra-val" id="inf-s3">Unknown</span>
+                </div>
+                <div class="infra-row">
+                    <span class="infra-label">Glacier Files</span>
+                    <span class="infra-val" id="inf-glacier">Unknown</span>
+                </div>
+                <div class="infra-row">
+                    <span class="infra-label">CW Alarms</span>
+                    <span class="infra-val" id="inf-cw">Unknown</span>
+                </div>
+                <div class="infra-row">
+                    <span class="infra-label">SNS Alerts</span>
+                    <span class="infra-val" id="inf-sns">Unknown</span>
+                </div>
+                </div>
+                <button class="btn btn--ghost" onclick="refreshStatus()">
+                <span>Refresh Status</span>
+                </button>
+            </div>
+
             </section>
-        </div>
-        <section class="terminal">
-            <h3>Command Output</h3>
-            <pre id="output">System ready...</pre>
-        </section>
+
+            <!-- Terminal -->
+            <section class="terminal-section">
+            <div class="terminal-header">
+                <div class="terminal-dots">
+                <span></span><span></span><span></span>
+                </div>
+                <span class="terminal-title">COMMAND OUTPUT</span>
+                <button class="clear-btn" onclick="clearTerminal()">CLEAR</button>
+            </div>
+            <pre id="output"><span class="prompt">archivecloud@aws</span><span class="cursor"> $ </span>system ready. run a command above to begin.</pre>
+            </section>
+
+        </main>
+
         <footer>
-            CloudVault Human and Computer Interaction Project  
-            AWS Services: EC2 + S3 + Glue + EKS + IAM + CloudWatch + Amazon SNS + Systems Manager
+            <span>ArchiveCloud — Human &amp; Computer Interaction Project</span>
+            <span class="footer-services">IAM · EC2 · S3 · Glacier · EKS · Glue · CloudWatch · SNS · SSM</span>
         </footer>
+
         <script src="script.js"></script>
     </body>
 </html>

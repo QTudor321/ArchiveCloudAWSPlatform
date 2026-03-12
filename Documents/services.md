@@ -32,19 +32,18 @@ ArchiveCloud is a web-based cloud archive and real-time monitoring system built 
     │archive containers│  │  (hosting)      │  │ (uploads)       │
     └──────────────────┘  └─────────────────┘  └─────────────────┘
                    │               │                 │
-    ┌──────────────▼───┐  ┌────────▼────────┐  ┌────▼────────────┐
-    │   System Manager │  │  CloudWatch     │  │ AWS Glue        │
-    │ store and audit  │  │  (tracing)      │  │ (data catalog)  │
-    └──────────────────┘  └─────────────────┘  └─────────────────┘
+    ┌──────────────▼───┐  ┌────────▼────────┐  ┌────▼────────────┐  ┌────▼────────────┐ 
+    │   System Manager │  │  CloudWatch     │  │ AWS Glue        │  │ Amazon SNS      │
+    │ store and audit  │  │  (tracing)      │  │ (data catalog)  │  │ (Email alerts)  │
+    └──────────────────┘  └─────────────────┘  └─────────────────┘  └─────────────────┘
                    │               │                 │
 
                                     │
                     ┌───────────────▼──────────────┐
-                    │         Amazon SNS           │
-                    │ (Email alerts + secure comms)│
+                    │         S3 Glacier           │
+                    │     (Archive Storage)        │
                     └──────────────────────────────┘
-```
-
+                    
 ---
 
 ## AWS Services — Roles & Justification
