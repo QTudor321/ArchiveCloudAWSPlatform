@@ -20,7 +20,7 @@ SUBNET_1=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --que
 SUBNET_2=$(aws ec2 describe-subnets --filters "Name=vpc-id,Values=$VPC_ID" --query "Subnets[1].SubnetId" --output text)
 
 # S3
-ARCHIVECLOUD_BUCKET=$(aws s3 ls | grep archivecloud | awk '{print $3}')
+export ARCHIVECLOUD_BUCKET=$(aws s3 ls | grep archivecloud | awk '{print $3}')
 export CLOUDVAULT_BUCKET=$ARCHIVECLOUD_BUCKET
 
 # SNS
