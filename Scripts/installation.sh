@@ -211,7 +211,7 @@ ok "CloudWatch metrics initialized"
 section "SNS - Creating alert topic"
 TOPIC_ARN=$(aws sns create-topic --name archivecloud-alerts --query "TopicArn" --output text)
 ok "SNS topic: $TOPIC_ARN"
-aws sns subscribe --topic-arn $TOPIC_ARN --protocol email --notification-endpoint tudorovesea333@gmail.com 2>/dev/null && ok "Email subscription created - check inbox to confirm" || ok "Subscription already exists"
+aws sns subscribe --topic-arn $TOPIC_ARN --protocol email --notification-endpoint youremail@gmail.com 2>/dev/null && ok "Email subscription created - check inbox to confirm" || ok "Subscription already exists"
 aws cloudwatch put-metric-alarm --alarm-name "archivecloud-no-uploads" --alarm-description "No files uploaded in last hour" --namespace "ArchiveCloud/IOC" --metric-name "FilesUploaded" --statistic Sum --period 3600 --threshold 1 --comparison-operator LessThanThreshold --evaluation-periods 1 --alarm-actions $TOPIC_ARN 2>/dev/null && ok "Alarm created: archivecloud-no-uploads" || ok "Alarm already exists"
 aws cloudwatch put-metric-alarm --alarm-name "archivecloud-glacier-activity" --alarm-description "Monitors Glacier archive operations" --namespace "ArchiveCloud/IOC" --metric-name "GlacierArchives" --statistic Sum --period 3600 --threshold 1 --comparison-operator GreaterThanOrEqualToThreshold --evaluation-periods 1 --alarm-actions $TOPIC_ARN 2>/dev/null && ok "Alarm created: archivecloud-glacier-activity" || ok "Alarm already exists"
 
