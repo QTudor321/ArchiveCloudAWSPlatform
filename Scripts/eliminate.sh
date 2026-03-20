@@ -36,11 +36,14 @@ if [[ "$NODE_STATUS" != "NOT_FOUND" ]]; then
   info "Deleting node group archivecloud-nodes (~5 min)..."
   aws eks delete-nodegroup --cluster-name archivecloud-eks --nodegroup-name archivecloud-nodes --output text > /dev/null && ok "Node group deletion started" || warn "Node group deletion failed or already gone"
   info "Waiting for node group to be deleted..."
+  ELAPSED=0
   while true; do
     STATUS=$(aws eks describe-nodegroup --cluster-name archivecloud-eks --nodegroup-name archivecloud-nodes --query "nodegroup.status" --output text 2>/dev/null || echo "DELETED")
     [[ "$STATUS" == "DELETED" || "$STATUS" == "" ]] && break
-    echo "    status: $STATUS — waiting 30s..."
+    [[ $ELAPSED -ge 1200 ]] && { warn "Node group deletion timed out — check AWS console"; break; }
+    echo "    status: $STATUS — waiting 30s... (${ELAPSED}s / 1200s)"
     sleep 30
+    ELAPSED=$((ELAPSED + 30))
   done
   ok "Node group deleted"
 else
@@ -54,11 +57,14 @@ if [[ "$CLUSTER_STATUS" != "NOT_FOUND" ]]; then
   info "Deleting cluster archivecloud-eks (~5 min)..."
   aws eks delete-cluster --name archivecloud-eks --output text > /dev/null && ok "Cluster deletion started" || warn "Cluster deletion failed or already gone"
   info "Waiting for cluster to be deleted..."
+  ELAPSED=0
   while true; do
     STATUS=$(aws eks describe-cluster --name archivecloud-eks --query "cluster.status" --output text 2>/dev/null || echo "DELETED")
     [[ "$STATUS" == "DELETED" || "$STATUS" == "" ]] && break
-    echo "    status: $STATUS — waiting 30s..."
+    [[ $ELAPSED -ge 1200 ]] && { warn "Cluster deletion timed out — check AWS console"; break; }
+    echo "    status: $STATUS — waiting 30s... (${ELAPSED}s / 1200s)"
     sleep 30
+    ELAPSED=$((ELAPSED + 30))
   done
   ok "Cluster deleted"
 else
