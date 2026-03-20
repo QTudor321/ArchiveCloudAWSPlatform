@@ -12,6 +12,28 @@ warn()    { echo -e "  ${Y}[!!]${NC}  $1"; }
 err()     { echo -e "  ${R}[XX]${NC}  $1"; exit 1; }
 section() { echo -e "\n  ${M}=== $1 ===${NC}"; }
 
+# Wait helper with timeout - prevents infinite loops
+# Usage: wait_for <description> <timeout_seconds> <check_command> <expected_value>
+wait_for() {
+  local DESC="$1"
+  local TIMEOUT="$2"
+  local CMD="$3"
+  local EXPECTED="$4"
+  local ELAPSED=0
+  info "Waiting for $DESC (timeout: ${TIMEOUT}s)..."
+  while true; do
+    RESULT=$(eval "$CMD" 2>/dev/null || echo "ERROR")
+    [[ "$RESULT" == "$EXPECTED" ]] && { ok "$DESC — $EXPECTED"; return 0; }
+    if [[ $ELAPSED -ge $TIMEOUT ]]; then
+      warn "$DESC timed out after ${TIMEOUT}s — last status: $RESULT"
+      return 1
+    fi
+    echo "    status: $RESULT — waiting 30s... (${ELAPSED}s / ${TIMEOUT}s)"
+    sleep 30
+    ELAPSED=$((ELAPSED + 30))
+  done
+}
+
 export AWS_PAGER=""
 REGION="us-east-1"
 
@@ -65,19 +87,11 @@ aws iam add-role-to-instance-profile --instance-profile-name archivecloud-profil
 ok "Instance profile ready"
 INSTANCE_ID=$(aws ec2 run-instances --image-id $AMI_ID --instance-type t2.micro --subnet-id $SUBNET_1 --security-group-ids $SG_ID --iam-instance-profile Name=archivecloud-profile --associate-public-ip-address --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=cloudvault-server},{Key=project,Value=hci}]' --query "Instances[0].InstanceId" --output text)
 ok "Instance launched: $INSTANCE_ID"
-info "Waiting for instance to be running..."
-aws ec2 wait instance-running --instance-ids $INSTANCE_ID
+wait_for "EC2 instance running" 300 "aws ec2 describe-instances --instance-ids $INSTANCE_ID --query 'Reservations[0].Instances[0].State.Name' --output text" "running" || err "EC2 instance failed to start"
 ok "Instance is running"
 PUBLIC_IP=$(aws ec2 describe-instances --instance-ids $INSTANCE_ID --query "Reservations[0].Instances[0].PublicIpAddress" --output text)
 ok "Public IP: $PUBLIC_IP"
-info "Waiting for SSM agent (~60 seconds)..."
-sleep 60
-for i in {1..10}; do
-  PING=$(aws ssm describe-instance-information --query "InstanceInformationList[?InstanceId=='$INSTANCE_ID'].PingStatus" --output text 2>/dev/null || echo "")
-  [[ "$PING" == "Online" ]] && break
-  echo "    SSM not ready yet - waiting 15s... ($i/10)"
-  sleep 15
-done
+wait_for "SSM agent online" 300 "aws ssm describe-instance-information --query \"InstanceInformationList[?InstanceId=='$INSTANCE_ID'].PingStatus\" --output text" "Online" || warn "SSM agent slow - continuing anyway"
 ok "SSM agent online"
 info "Creating project directories on EC2..."
 aws ssm send-command --instance-ids $INSTANCE_ID --document-name "AWS-RunShellScript" --parameters 'commands=[
@@ -91,9 +105,16 @@ CMD_ID=$(aws ssm send-command --instance-ids $INSTANCE_ID --document-name "AWS-R
     "systemctl enable nginx",
     "echo nginx ready"
   ]' --query "Command.CommandId" --output text)
-sleep 20
-STATUS=$(aws ssm get-command-invocation --command-id $CMD_ID --instance-id $INSTANCE_ID --query "Status" --output text 2>/dev/null || echo "Unknown")
-ok "nginx installed - SSM status: $STATUS"
+ELAPSED=0
+while true; do
+  sleep 15
+  ELAPSED=$((ELAPSED + 15))
+  STATUS=$(aws ssm get-command-invocation --command-id $CMD_ID --instance-id $INSTANCE_ID --query "Status" --output text 2>/dev/null || echo "Pending")
+  [[ "$STATUS" == "Success" ]] && { ok "nginx installed"; break; }
+  [[ "$STATUS" == "Failed" ]]  && { warn "nginx install failed — continuing"; break; }
+  [[ $ELAPSED -ge 180 ]]       && { warn "nginx install timed out — continuing"; break; }
+  echo "    nginx installing... ($STATUS) ${ELAPSED}s"
+done
 
 # PART 4 - S3 bucket
 section "S3 - Creating bucket"
@@ -144,9 +165,16 @@ CMD_ID=$(aws ssm send-command --instance-ids $INSTANCE_ID --document-name "AWS-R
     "cp /home/ec2-user/ArchiveCloudAWSPlatform/UserInterface/script.js  /usr/share/nginx/html/script.js",
     "echo Deployed"
   ]' --query "Command.CommandId" --output text)
-sleep 20
-STATUS=$(aws ssm get-command-invocation --command-id $CMD_ID --instance-id $INSTANCE_ID --query "Status" --output text 2>/dev/null || echo "Unknown")
-ok "Files deployed to EC2 - SSM status: $STATUS"
+ELAPSED=0
+while true; do
+  sleep 15
+  ELAPSED=$((ELAPSED + 15))
+  STATUS=$(aws ssm get-command-invocation --command-id $CMD_ID --instance-id $INSTANCE_ID --query "Status" --output text 2>/dev/null || echo "Pending")
+  [[ "$STATUS" == "Success" ]] && { ok "Files deployed to EC2"; break; }
+  [[ "$STATUS" == "Failed" ]]  && { warn "Deploy failed — check SSM logs"; break; }
+  [[ $ELAPSED -ge 180 ]]       && { warn "Deploy timed out — continuing"; break; }
+  echo "    deploying... ($STATUS) ${ELAPSED}s"
+done
 ok "Dashboard: http://$PUBLIC_IP"
 
 # PART 6 - EKS cluster (starts in background, takes ~12 min)
@@ -157,14 +185,7 @@ if [[ -n "$EXISTING_CLUSTER" ]]; then
 else
   aws eks create-cluster --name archivecloud-eks --region $REGION --kubernetes-version 1.29 --role-arn $CLUSTER_ROLE --resources-vpc-config subnetIds=$SUBNET_1,$SUBNET_2,endpointPublicAccess=true --output text > /dev/null && ok "Cluster creation started..." || err "Cluster creation failed"
 fi
-info "Waiting for cluster to become ACTIVE..."
-while true; do
-  STATUS=$(aws eks describe-cluster --name archivecloud-eks --query "cluster.status" --output text 2>/dev/null || echo "UNKNOWN")
-  [[ "$STATUS" == "ACTIVE" ]] && break
-  echo "    status: $STATUS - waiting 30s..."
-  sleep 30
-done
-ok "Cluster is ACTIVE"
+wait_for "EKS cluster ACTIVE" 1200 "aws eks describe-cluster --name archivecloud-eks --query 'cluster.status' --output text" "ACTIVE" || err "EKS cluster failed - check AWS console" 
 info "Creating node group (~5 more minutes)..."
 EXISTING_NG=$(aws eks list-nodegroups --cluster-name archivecloud-eks --query "nodegroups[?@=='archivecloud-nodes']" --output text 2>/dev/null || echo "")
 if [[ -n "$EXISTING_NG" ]]; then
@@ -172,13 +193,7 @@ if [[ -n "$EXISTING_NG" ]]; then
 else
   aws eks create-nodegroup --cluster-name archivecloud-eks --nodegroup-name archivecloud-nodes --node-role $NODE_ROLE --subnets $SUBNET_1 $SUBNET_2 --instance-types t3.small --scaling-config minSize=1,maxSize=2,desiredSize=1 --output text > /dev/null && ok "Node group creation started..." || err "Node group creation failed"
 fi
-info "Waiting for node group to become ACTIVE..."
-while true; do
-  STATUS=$(aws eks describe-nodegroup --cluster-name archivecloud-eks --nodegroup-name archivecloud-nodes --query "nodegroup.status" --output text 2>/dev/null || echo "UNKNOWN")
-  [[ "$STATUS" == "ACTIVE" ]] && break
-  echo "    status: $STATUS - waiting 30s..."
-  sleep 30
-done
+wait_for "EKS node group ACTIVE" 900 "aws eks describe-nodegroup --cluster-name archivecloud-eks --nodegroup-name archivecloud-nodes --query 'nodegroup.status' --output text" "ACTIVE" || warn "Node group timed out - check AWS console and continue manually" 
 ok "Node group is ACTIVE"
 
 # PART 7 - Glue
@@ -196,7 +211,7 @@ ok "CloudWatch metrics initialized"
 section "SNS - Creating alert topic"
 TOPIC_ARN=$(aws sns create-topic --name archivecloud-alerts --query "TopicArn" --output text)
 ok "SNS topic: $TOPIC_ARN"
-aws sns subscribe --topic-arn $TOPIC_ARN --protocol email --notification-endpoint your@gmail.com 2>/dev/null && ok "Email subscription created - check inbox to confirm" || ok "Subscription already exists"
+aws sns subscribe --topic-arn $TOPIC_ARN --protocol email --notification-endpoint tudorovesea333@gmail.com 2>/dev/null && ok "Email subscription created - check inbox to confirm" || ok "Subscription already exists"
 aws cloudwatch put-metric-alarm --alarm-name "archivecloud-no-uploads" --alarm-description "No files uploaded in last hour" --namespace "ArchiveCloud/IOC" --metric-name "FilesUploaded" --statistic Sum --period 3600 --threshold 1 --comparison-operator LessThanThreshold --evaluation-periods 1 --alarm-actions $TOPIC_ARN 2>/dev/null && ok "Alarm created: archivecloud-no-uploads" || ok "Alarm already exists"
 aws cloudwatch put-metric-alarm --alarm-name "archivecloud-glacier-activity" --alarm-description "Monitors Glacier archive operations" --namespace "ArchiveCloud/IOC" --metric-name "GlacierArchives" --statistic Sum --period 3600 --threshold 1 --comparison-operator GreaterThanOrEqualToThreshold --evaluation-periods 1 --alarm-actions $TOPIC_ARN 2>/dev/null && ok "Alarm created: archivecloud-glacier-activity" || ok "Alarm already exists"
 
